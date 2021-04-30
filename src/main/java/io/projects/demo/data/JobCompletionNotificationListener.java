@@ -11,7 +11,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import javax.persistence.EntityManager;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 @Component
@@ -30,33 +29,36 @@ public class JobCompletionNotificationListener extends JobExecutionListenerSuppo
     @Transactional
     public void afterJob(JobExecution jobExecution) {
         if (jobExecution.getStatus() == BatchStatus.COMPLETED) {
-            log.info("!!! JOB FINISHED! Time to verify the results");
             Map<String, Team> teamData = new HashMap<>();
 
-            List<Object[]> resultsTeam1 = em.createQuery("select distinct m.team1, count(*) from Match m group by m.team1")
-                    .getResultList();
-
-            resultsTeam1.stream().map(e -> new Team((String) e[0], (long) e[1]))
+            em.createQuery("select m.team1, count(*) from Match m group by m.team1", Object[].class)
+                    .getResultList()
+                    .stream()
+                    .map(e -> new Team((String) e[0], (long) e[1]))
                     .forEach(team -> teamData.put(team.getTeamName(), team));
 
-            List<Object[]> resultsTeam2 = em.createQuery("select distinct m.team2, count(*) from Match m group by m.team2")
-                    .getResultList();
+            em.createQuery("select m.team2, count(*) from Match m group by m.team2", Object[].class)
+                    .getResultList()
+                    .stream()
+                    .forEach(e1 -> {
+                        Team team = teamData.get((String) e1[0]);
 
-            resultsTeam2.stream().forEach(e -> {
-                Team team = teamData.get((String) e[0]);
-                if(team != null)
-                    team.setTotalMatches(team.getTotalMatches() + (long) e[1]);
-            });
+                        if (team != null) {
+                            team.setTotalMatches(team.getTotalMatches() + (long) e1[1]);
+                        }
 
-            em.createQuery("select m.matchWinner, count(*) from Match m group by m.matchWinner", Object[].class).getResultList().forEach(e -> {
-                Team team = teamData.get((String) e[0]);
-                if(team != null)
-                    team.setTotalWins((long) e[1]);
-            });
+                    });
 
-            teamData.values().forEach(team -> em.persist(team));
-            teamData.values().forEach(team -> System.out.println(team));
+            em.createQuery("select m.matchWinner, count(*) from Match m group by m.matchWinner", Object[].class)
+                    .getResultList()
+                    .stream()
+                    .forEach(e -> {
+                        Team team = teamData.get((String) e[0]);
+                        if (team != null) team.setTotalWins((long) e[1]);
+                    });
 
+            teamData.values().forEach(em::persist);
+//            teamData.values().forEach(System.out::println);
 
         }
     }
